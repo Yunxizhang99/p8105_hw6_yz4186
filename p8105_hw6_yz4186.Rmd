@@ -46,17 +46,6 @@ birthweight_df =
 ```
 
 
-#### Load and clean the data for regression analysis (i.e. convert numeric to factor where appropriate, check for missing data, etc.).
-
-#### Propose a regression model for birthweight. This model may be based on a hypothesized structure for the factors that underly birthweight, on a data-driven model-building process, or a combination of the two. Describe your modeling process and show a plot of model residuals against fitted values – use add_predictions and add_residuals in making this plot.
-
-#### Compare your model to two others:
-
-#### One using length at birth and gestational age as predictors (main effects only) One using head circumference, length, sex, and all interactions (including the three-way interaction) between these Make this comparison in terms of the cross-validated prediction error; use crossv_mc and functions in purrr as appropriate.
-
-#### Note that although we expect your model to be reasonable, model building itself is not a main idea of the course and we don’t necessarily expect your model to be “optimal”.
-
-
 construct the two models.
 
 ```{r}
@@ -140,7 +129,111 @@ cv_df %>%
 From the plot, I found that the fitted model has the smallest RMSE which indicates that it is the best model among the three models.
 
 
+## Problem 2
 
+```{r }
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+```
+
+Do the bootstrap.
+
+```{r}
+weather_boot =
+  weather_df %>% 
+  drop_na() %>% 
+  bootstrap(5000, id = "strap_number") %>% 
+  mutate(
+    models = map(.x = strap, ~lm(tmax ~ tmin, data = .x)),
+    results = map(models, broom::tidy),
+    result_r = map(models, broom::glance)
+  ) %>% 
+  select(strap_number, results, result_r) %>% 
+  unnest(results, result_r)
+
+weather_boot
+```
+
+Calculate $log(\beta_{0} * \beta_{1})$
+
+```{r}
+log_df =
+  weather_boot %>% 
+  dplyr::select(strap_number, term, estimate) %>% 
+  pivot_wider(names_from = term,
+              values_from = estimate) %>% 
+  rename(intercept ="(Intercept)") %>% 
+  mutate(log_value = log10(intercept*tmin))
+
+log_df
+```
+
+Plot the distribution of $log(\beta_{0} * \beta_{1})$
+
+```{r}
+log_df %>% 
+  ggplot(aes(x = log_value)) +
+  geom_density() + 
+  xlab("log(beta0 * beta1)") +
+  ggtitle("Distribution of log(beta0 * beta1)")
+```
+
+From the plot I found that the distribution of $log(\beta_{0} * \beta_{1})$ is approximately normal. And when it closes to 0.875, it has the largest density.
+
+Calculate the 95% CI.
+
+```{r}
+log_df %>% 
+  summarize(
+    ci_lower = quantile(log_value, 0.025),
+    ci_upper = quantile(log_value, 0.975)
+  ) %>% 
+  knitr::kable()
+```
+
+
+Calculate $r^2$.
+
+```{r}
+r_square =
+  weather_boot %>% 
+  filter(term == "tmin") %>% 
+  dplyr::select(r.squared) 
+
+r_square
+```
+
+Plot the distribution of  $r^2$.
+
+```{r}
+r_square %>% 
+  ggplot(aes(x = r.squared)) +
+  geom_density() + 
+  xlab("r_square") +
+  ggtitle("Distribution of r_square")
+```
+
+From the plot, I found that the distribution of  $r^2$ is approximately normal, and when it get close to 0.912, it has the largest density. 
+
+Calculate the 95% CI. 
+
+```{r}
+r_square %>% 
+  summarize(
+    ci_lower = quantile(r.squared, 0.025),
+    ci_upper = quantile(r.squared,0.975)
+  ) %>% 
+  knitr::kable()
+```
 
 
 
